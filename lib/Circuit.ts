@@ -1,11 +1,11 @@
-'use strict';
-
-const EventEmitter = require('events').EventEmitter;
-const Promise = require('bluebird');
-const promisifyIfFunction = require('./utils').promisifyIfFunction;
-const TimeOutError = require('./TimeOutError');
-const CircuitBrokenError = require('../lib/CircuitBrokenError');
-const consts = require('./consts');
+import { EventEmitter } from 'events';
+import Promise from 'bluebird';
+import Brakes, { ConfigurationOptions } from './Brakes';
+import { promisifyIfFunction } from './utils';
+import TimeOutError from './TimeOutError';
+import CircuitBrokenError from './CircuitBrokenError';
+import * as consts from './consts';
+import { PromiseOrCallback } from './types';
 
 const defaultOptions = {
   isFailure: () => true
@@ -15,8 +15,18 @@ const defaultOptions = {
  * Class that can sit on top of a Brakes. It's basically just a pair of primary and fallback Promises you can put on
  * top of a Brake that monitors a common Service (eg: ).
  */
-class Circuit extends EventEmitter {
-  constructor(brakes, main, fallback, options) {
+export default class Circuit<T> extends EventEmitter {
+  private _brakes: Brakes<T>;
+  private _serviceCall: () => Promise<T>;
+  private _fallback: () => Promise<T>;
+  private _opts: ConfigurationOptions<T>;
+
+  constructor(
+    brakes: Brakes<T>,
+    main: PromiseOrCallback<T>,
+    fallback: PromiseOrCallback<T>,
+    options: ConfigurationOptions<T>
+  ) {
     super();
 
     if (!(brakes instanceof EventEmitter)) {
@@ -37,16 +47,19 @@ class Circuit extends EventEmitter {
       }
     }
     this._opts = Object.assign({}, defaultOptions, options);
-    this._this = this._opts.this || this;
 
-    this._serviceCall = promisifyIfFunction(main, this._opts.isPromise, this._opts.isFunction);
+    this._serviceCall = promisifyIfFunction(
+      main,
+      this._opts.isPromise,
+      this._opts.isFunction
+    );
 
     if (fallback) {
       this.fallback(fallback, this._opts.isPromise, this._opts.isFunction);
     }
   }
 
-  exec() {
+  exec(...args: unknown[]) {
     this._brakes.emit('exec');
 
     // Save circuit generation to scope so we can compare it
@@ -62,7 +75,11 @@ class Circuit extends EventEmitter {
       else if (this._brakes._fallback) {
         return this._brakes._fallback.apply(this, arguments);
       }
-      return Promise.reject(new CircuitBrokenError(this._brakes.name, this._brakes._stats._totals, this._brakes._opts.threshold));
+      return Promise.reject(new CircuitBrokenError(
+        this._brakes.name,
+        this._brakes._stats._totals,
+        this._brakes._opts.threshold
+      ));
     }
 
     const startTime = Date.now();
@@ -72,7 +89,7 @@ class Circuit extends EventEmitter {
     return this._execPromise
       .apply(this, arguments)
       .tap(() => this._brakes.emit('success', Date.now() - startTime))
-      .catch(err => {
+      .catch((err: Error) => {
         const endTime = Date.now() - startTime;
 
         // trigger hook listeners
@@ -87,13 +104,17 @@ class Circuit extends EventEmitter {
         // the fallback function. The function is fire-and-forget
         // as far as `Brakes` is concerned
         if (this._fallback) {
-          return this._fallback.apply(this, arguments);
+          return this._fallback.apply(this, args);
         }
         else if (this._brakes._fallback) {
-          return this._brakes._fallback.apply(this, arguments);
+          return this._brakes._fallback.apply(this, args);
         }
 
-        if (err.message && this._brakes.name && this._brakes._opts.modifyError) {
+        if (
+          err.message &&
+          this._brakes.name &&
+          this._brakes._opts.modifyError
+        ) {
           err.message = `[Breaker: ${this._brakes.name}] ${err.message}`;
         }
 
@@ -104,26 +125,33 @@ class Circuit extends EventEmitter {
   /*
    Execute main service call
    */
-  _execPromise() {
+  _execPromise(...args: unknown[]) {
     return new Promise((resolve, reject) => {
       // start timeout timer
       const timeoutTimer = setTimeout(() => {
         reject(new TimeOutError(consts.TIMEOUT));
       }, this._opts.timeout || this._brakes._opts.timeout);
 
-      this._serviceCall.apply(this._this, arguments).then(result => {
-        clearTimeout(timeoutTimer);
-        resolve(result);
-      }).catch(err => {
-        clearTimeout(timeoutTimer);
-        reject(err);
-      });
+      this._serviceCall
+        .apply(this, args)
+        .then((result: T) => {
+          clearTimeout(timeoutTimer);
+          resolve(result);
+        })
+        .catch((err: Error) => {
+          clearTimeout(timeoutTimer);
+          reject(err);
+        });
 
       timeoutTimer.unref();
     });
   }
 
-  fallback(func, isPromise, isFunction) {
+  fallback(
+    func: PromiseOrCallback<T>,
+    isPromise: boolean,
+    isFunction: boolean
+  ) {
     this._fallback = promisifyIfFunction(func, isPromise, isFunction);
     return this._fallback;
   }

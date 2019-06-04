@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "outDir": "dist/",
+    "alwaysStrict": true,
+    "noImplicitAny": true,
+    "esModuleInterop": true,
+    "lib": ["es2017"]
+  }
+}

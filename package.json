@@ -12,10 +12,12 @@
     "url": "https://github.com/awolden/brakes.git"
   },
   "scripts": {
+    "build": "tsc",
     "test": "mocha",
     "test:lint": "eslint .",
     "coverage": "nyc --reporter lcov --reporter text npm test",
-    "coveralls": "cat ./coverage/lcov.info | coveralls && rm -rf ./coverage"
+    "coveralls": "cat ./coverage/lcov.info | coveralls && rm -rf ./coverage",
+    "prepublish": "npm run build"
   },
   "keywords": [
     "circuit",
@@ -38,6 +40,7 @@
   },
   "devDependencies": {
     "@types/bluebird": "^3.5.27",
+    "@types/node": "^12.0.4",
     "chai": "^4.0.1",
     "chai-things": "^0.2.0",
     "coveralls": "^3.0.3",

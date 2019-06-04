@@ -21,7 +21,6 @@ function unreliableServiceCall() {
         successRate = 1;
       }
 
-
       if (Math.random() <= successRate) {
         resolve();
       }
@@ -31,7 +30,6 @@ function unreliableServiceCall() {
     }, timer);
   });
 }
-
 
 const brake = new Brakes(unreliableServiceCall, {
   statInterval: 1000,
@@ -43,35 +41,46 @@ const brake = new Brakes(unreliableServiceCall, {
 const globalStats = Brakes.getGlobalStats();
 
 /*
-Create SSE Hysterix compliant Server
+Create SSE Hystrix compliant Server
 */
-http.createServer((req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream;charset=UTF-8');
-  res.setHeader('Cache-Control', 'no-cache, no-store, max-age=0, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  globalStats.getHystrixStream().pipe(res);
-}).listen(8081, () => {
-  console.log('---------------------');
-  console.log('Hysterix Server now live at localhost:8081/hystrix.stream');
-  console.log('---------------------');
-});
+http
+  .createServer((req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream;charset=UTF-8');
+    res.setHeader(
+      'Cache-Control',
+      'no-cache, no-store, max-age=0, must-revalidate'
+    );
+    res.setHeader('Pragma', 'no-cache');
+    globalStats.getHystrixStream().pipe(res);
+  })
+  .listen(8081, () => {
+    console.log('---------------------');
+    console.log('Hystrix Server now live at localhost:8081/hystrix.stream');
+    console.log('---------------------');
+  });
 
 /*
-Create SSE Hysterix compliant Server
+Create SSE Hystrix compliant Server
 */
-http.createServer((req, res) => {
-  res.setHeader('Content-Type', 'text/event-stream;charset=UTF-8');
-  res.setHeader('Cache-Control', 'no-cache, no-store, max-age=0, must-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  globalStats.getHystrixStream().pipe(res);
-}).listen(8082, () => {
-  console.log('---------------------');
-  console.log('Hysterix Server now live at localhost:8082/hystrix.stream');
-  console.log('---------------------');
-});
+http
+  .createServer((req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream;charset=UTF-8');
+    res.setHeader(
+      'Cache-Control',
+      'no-cache, no-store, max-age=0, must-revalidate'
+    );
+    res.setHeader('Pragma', 'no-cache');
+    globalStats.getHystrixStream().pipe(res);
+  })
+  .listen(8082, () => {
+    console.log('---------------------');
+    console.log('Hystrix Server now live at localhost:8082/hystrix.stream');
+    console.log('---------------------');
+  });
 
 setInterval(() => {
-  brake.exec()
+  brake
+    .exec()
     .then(() => {})
     .catch(() => {});
 }, 100);

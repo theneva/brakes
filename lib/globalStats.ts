@@ -1,27 +1,28 @@
-'use strict';
+import stream from 'stream';
+import * as utils from './utils';
+import Stats from './stats';
+import Brakes from './Brakes';
 
-const stream = require('stream');
-const utils = require('../lib/utils');
+class GlobalStats<T = unknown> {
+  private _brakesInstances: Brakes<T>[] = [];
 
+  // create raw stream
+  private _rawStream = new stream.Readable({
+    objectMode: true,
+    highWaterMark: 0
+  });
 
-class GlobalStats {
+  // create hystrix stream
+  private _hystrixStream = new stream.Transform({
+    objectMode: true,
+    highWaterMark: 0
+  });
+
   constructor() {
-    this._brakesInstances = [];
-
-    // create raw stream
-    this._rawStream = new stream.Readable({
-      objectMode: true,
-      highWaterMark: 0
-    });
     this._rawStream._read = () => {};
     this._rawStream.resume();
 
-    // create hysterix stream
-    this._hystrixStream = new stream.Transform({
-      objectMode: true,
-      highWaterMark: 0
-    });
-    this._hystrixStream._transform = this._transformToHysterix;
+    this._hystrixStream._transform = this._transformToHystrix;
     this._hystrixStream.resume();
 
     // connect the streams
@@ -34,13 +35,13 @@ class GlobalStats {
   }
 
   /* register a new instance apply listener */
-  register(instance) {
+  register(instance: Brakes<T>) {
     this._brakesInstances.push(instance);
     instance.on('snapshot', this._globalListener.bind(this));
   }
 
   /* deregister an existing instance and remove listener */
-  deregister(instance) {
+  deregister(instance: Brakes<T>) {
     const idx = this._brakesInstances.indexOf(instance);
     if (idx > -1) {
       this._brakesInstances.splice(idx, 1);
@@ -49,7 +50,7 @@ class GlobalStats {
   }
 
   /* listen to event and pipe to stream */
-  _globalListener(stats) {
+  _globalListener(stats: Stats) {
     if (!stats || typeof stats !== 'object') return;
     if (!this._rawStream.isPaused()) {
       this._rawStream.push(JSON.stringify(stats));
@@ -57,18 +58,19 @@ class GlobalStats {
   }
 
   /* transform stats object into hystrix object */
-  _transformToHysterix(stats, encoding, callback) {
-    if (!stats || typeof stats !== 'string') return stats;
-    let rawStats;
-    let mappedStats;
+  _transformToHystrix(
+    stats: string,
+    _encoding: null, // required to be a stream transform
+    callback: (err: Error | null, data?: string) => void
+  ) {
     try {
-      rawStats = JSON.parse(stats);
-      mappedStats = utils.mapToHystrixJson(rawStats);
+      const rawStats = JSON.parse(stats);
+      const mappedStats = utils.mapToHystrixJson(rawStats);
+      return callback(null, `data: ${JSON.stringify(mappedStats)}\n\n`);
     }
     catch (err) {
       return callback(err);
     }
-    return callback(null, `data: ${JSON.stringify(mappedStats)}\n\n`);
   }
 
   /* listen to event and pipe to stream */
@@ -82,4 +84,5 @@ class GlobalStats {
   }
 }
 
-module.exports = new GlobalStats();
+const instance = new GlobalStats();
+export default instance;

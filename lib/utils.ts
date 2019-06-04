@@ -1,31 +1,38 @@
-'use strict';
+import Promise from 'bluebird';
+import { PromiseOrCallback } from './types';
+import { Percentiles } from './stats';
 
-const Promise = require('bluebird');
+export const callbacks = ['cb', 'callback', 'callback_', 'done'];
 
-const callbacks = ['cb', 'callback', 'callback_', 'done'];
-
-function hasCallback(fn) {
+export function hasCallback(fn: Function) {
   const args = getFnArgs(fn);
   const callbackCandidate = args[args.length - 1];
   return callbacks.indexOf(callbackCandidate) > -1;
 }
 
-function promisifyIfFunction(fn, isPromise, isFunction) {
+export function promisifyIfFunction<T>(
+  fn: PromiseOrCallback<T>,
+  isPromise: boolean,
+  isFunction: boolean
+): () => Promise<T> {
   if (isPromise) {
+    // @ts-ignore we trust the caller
     return fn;
   }
 
   if (isFunction || hasCallback(fn)) {
+    // @ts-ignore we trust the caller
     return Promise.promisify(fn);
   }
 
+  // @ts-ignore we trust the caller
   return fn;
 }
 
 /*
  * Return a list arguments for a function
  */
-function getFnArgs(fn) {
+export function getFnArgs(fn: Function) {
   const match = fn.toString().match(/^[function\s]?.*?\(([^)]*)\)/);
   let args = '';
   if (!match) {
@@ -39,23 +46,57 @@ function getFnArgs(fn) {
   }
 
   // Split the arguments string into an array comma delimited.
-  return args.split(', ')
+  return args
+    .split(', ')
     .map(arg => arg.replace(/\/\*.*\*\//, '').trim())
     .filter(arg => arg);
 }
 
+export type RawStats = {
+  stats: {
+    total: number;
+    successful: number;
+    failed: number;
+    shortCircuited: number;
+    timedOut: number;
+    latencyMean: number;
+    percentiles: Percentiles;
+
+    countTotal: number;
+    countSuccess: number;
+    countFailure: number;
+    countTimeout: number;
+    countShortCircuited: number;
+
+    countTotalDeriv: number;
+    countSuccessDeriv: number;
+    countFailureDeriv: number;
+    countTimeoutDeriv: number;
+    countShortCircuitedDeriv: number;
+  };
+  name: string;
+  group: string;
+  time: number;
+  open: boolean;
+  waitThreshold: number;
+  circuitDuration: number;
+  threshold: number;
+};
+
 /*
  * Map a brakes stats object to a hystrix stats object
  */
-function mapToHystrixJson(json) {
-  const stats = json.stats;
+export function mapToHystrixJson(rawStats: RawStats) {
+  const stats = rawStats.stats;
   return {
     type: 'HystrixCommand',
-    name: json.name,
-    group: json.group,
-    currentTime: json.time,
-    isCircuitBreakerOpen: json.open,
-    errorPercentage: (stats.total) ? Math.round((1 - stats.successful / stats.total) * 100) : 0,
+    name: rawStats.name,
+    group: rawStats.group,
+    currentTime: rawStats.time,
+    isCircuitBreakerOpen: rawStats.open,
+    errorPercentage: stats.total
+      ? Math.round((1 - stats.successful / stats.total) * 100)
+      : 0,
     errorCount: stats.failed,
     requestCount: stats.total,
     rollingCountBadRequests: 0, // not reported
@@ -96,15 +137,17 @@ function mapToHystrixJson(json) {
       99.5: stats.percentiles['0.995'],
       100: stats.percentiles['1']
     },
-    propertyValue_circuitBreakerRequestVolumeThreshold: json.waitThreshold,
-    propertyValue_circuitBreakerSleepWindowInMilliseconds: json.circuitDuration,
-    propertyValue_circuitBreakerErrorThresholdPercentage: json.threshold,
+    propertyValue_circuitBreakerRequestVolumeThreshold: rawStats.waitThreshold,
+    propertyValue_circuitBreakerSleepWindowInMilliseconds:
+      rawStats.circuitDuration,
+    propertyValue_circuitBreakerErrorThresholdPercentage: rawStats.threshold,
     propertyValue_circuitBreakerForceOpen: false, // not reported
     propertyValue_circuitBreakerForceClosed: false, // not reported
     propertyValue_circuitBreakerEnabled: true, // not reported
     propertyValue_executionIsolationStrategy: 'THREAD', // not reported
     propertyValue_executionIsolationThreadTimeoutInMilliseconds: 800, // not reported
     propertyValue_executionIsolationThreadInterruptOnTimeout: true, // not reported
+    // @ts-ignore I have no idea what this is
     propertyValue_executionIsolationThreadPoolKeyOverride: null, // not reported
     propertyValue_executionIsolationSemaphoreMaxConcurrentRequests: 20, //  not reported
     propertyValue_fallbackIsolationSemaphoreMaxConcurrentRequests: 10, //  not reported
@@ -123,14 +166,6 @@ function mapToHystrixJson(json) {
     countSuccessDeriv: stats.countSuccessDeriv,
     countFailureDeriv: stats.countFailureDeriv,
     countTimeoutDeriv: stats.countTimeoutDeriv,
-    countShortCircuitedDeriv: stats.countShortCircuitedDeriv,
+    countShortCircuitedDeriv: stats.countShortCircuitedDeriv
   };
 }
-
-module.exports = {
-  callbacks,
-  hasCallback,
-  promisifyIfFunction,
-  getFnArgs,
-  mapToHystrixJson
-};

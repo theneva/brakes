@@ -1,7 +1,5 @@
-'use strict';
-
-const EventEmitter = require('events').EventEmitter;
-const Bucket = require('./Bucket');
+import { EventEmitter } from 'events';
+import Bucket from './Bucket';
 
 /* Example Default Options */
 const defaultOptions = {
@@ -11,31 +9,52 @@ const defaultOptions = {
   statInterval: 1200
 };
 
-class Stats extends EventEmitter {
-  constructor(opts) {
+type Opts = typeof defaultOptions;
+
+const defaultCumulativeStats = {
+  // Total count of requests, failures, etc.
+  countTotal: 0,
+  countSuccess: 0,
+  countFailure: 0,
+  countTimeout: 0,
+  countShortCircuited: 0,
+  // Derivate in between two measurements to support counters that only increase (e.g., prom-client)
+  countTotalDeriv: 0,
+  countSuccessDeriv: 0,
+  countFailureDeriv: 0,
+  countTimeoutDeriv: 0,
+  countShortCircuitedDeriv: 0
+};
+
+export type CumulativeStats = typeof defaultCumulativeStats;
+
+export type Percentiles = Record<string, number>;
+export type TotalStats = CumulativeStats & {
+  percentiles: Percentiles;
+  latencyMean: number;
+};
+
+export default class Stats extends EventEmitter {
+  private _opts: Opts;
+  private _activePosition: number;
+  private _cumulative: CumulativeStats;
+  private _buckets: Bucket[];
+  private _activeBucket: Bucket;
+
+  _totals: TotalStats;
+
+  private _spinningInterval: ReturnType<typeof setInterval>;
+  private _snapshotInterval: ReturnType<typeof setInterval>;
+
+  constructor(opts: Partial<Opts>) {
     super();
     this._opts = Object.assign({}, defaultOptions, opts);
     this._activePosition = this._opts.bucketNum - 1;
 
-    this._cummulative = {
-      // Total count of requests, failures, etc.
-      countTotal: 0,
-      countSuccess: 0,
-      countFailure: 0,
-      countTimeout: 0,
-      countShortCircuited: 0,
-      // Derivate in between two measurements to support counters that only increase (e.g., prom-client)
-      countTotalDeriv: 0,
-      countSuccessDeriv: 0,
-      countFailureDeriv: 0,
-      countTimeoutDeriv: 0,
-      countShortCircuitedDeriv: 0,
-    };
-
     // initialize buckets
     this._buckets = [];
     for (let i = 0; i < this._opts.bucketNum; i++) {
-      this._buckets.push(new Bucket(this._cummulative));
+      this._buckets.push(new Bucket(this._cumulative));
     }
 
     this._activeBucket = this._buckets[this._activePosition];
@@ -43,13 +62,13 @@ class Stats extends EventEmitter {
     this._totals = this._generateStats(this._buckets, true);
   }
 
-  getCummulateiveSatistics() {
-    return this._cummulative;
+  getCumulativeStatistics() {
+    return this._cumulative;
   }
 
   reset() {
     for (let i = 0; i < this._opts.bucketNum; i++) {
-      this._shiftAndPush(this._buckets, new Bucket(this._cummulative));
+      this._shiftAndPush(this._buckets, new Bucket(this._cumulative));
     }
     this._activeBucket = this._buckets[this._activePosition];
     this._update();
@@ -58,7 +77,7 @@ class Stats extends EventEmitter {
   /* Starts cycling through buckets */
   _startBucketSpinning() {
     this._spinningInterval = setInterval(() => {
-      this._shiftAndPush(this._buckets, new Bucket(this._cummulative));
+      this._shiftAndPush(this._buckets, new Bucket(this._cumulative));
       this._activeBucket = this._buckets[this._activePosition];
     }, this._opts.bucketSpan);
     this._spinningInterval.unref();
@@ -75,11 +94,12 @@ class Stats extends EventEmitter {
   }
 
   /* start generating snapshots */
-  startSnapshots(interval) {
+  startSnapshots(interval?: number) {
     this._snapshotInterval = setInterval(
       () => {
         this._snapshot();
       },
+      // TODO: This falls back to this._opts.statInterval if interval is 0
       interval || this._opts.statInterval
     );
     this._snapshotInterval.unref();
@@ -101,38 +121,45 @@ class Stats extends EventEmitter {
   percentiles. If `includeLatencyStats` is set to false or undefined, the existing
   calculated percentiles will be preserved.
   */
-  _generateStats(buckets, includeLatencyStats) {
+  _generateStats(buckets: Bucket[], includeLatencyStats?: boolean) {
     // reduce buckets
-    const tempTotals = buckets.reduce((prev, cur) => {
-      if (!cur) return prev;
+    const tempTotals = buckets.reduce(
+      (prev, cur) => {
+        if (!cur) return prev;
 
-      // aggregate incremented stats
-      prev.total += cur.total || 0;
-      prev.failed += cur.failed || 0;
-      prev.timedOut += cur.timedOut || 0;
-      prev.successful += cur.successful || 0;
-      prev.shortCircuited += cur.shortCircuited || 0;
+        // aggregate incremented stats
+        prev.total += cur.total || 0;
+        prev.failed += cur.failed || 0;
+        prev.timedOut += cur.timedOut || 0;
+        prev.successful += cur.successful || 0;
+        prev.shortCircuited += cur.shortCircuited || 0;
 
-      // concat `requestTimes` Arrays
-      if (includeLatencyStats) {
-        prev.requestTimes.push.apply(prev.requestTimes, cur.requestTimes || []);
+        // concat `requestTimes` Arrays
+        if (includeLatencyStats) {
+          prev.requestTimes.push.apply(
+            prev.requestTimes,
+            cur.requestTimes || []
+          );
+        }
+        return prev;
+      },
+      {
+        failed: 0,
+        timedOut: 0,
+        total: 0,
+        shortCircuited: 0,
+        latencyMean: 0,
+        successful: 0,
+        requestTimes: [],
+        percentiles: {} as Percentiles
       }
-      return prev;
-    }, {
-      failed: 0,
-      timedOut: 0,
-      total: 0,
-      shortCircuited: 0,
-      latencyMean: 0,
-      successful: 0,
-      requestTimes: [],
-      percentiles: {}
-    });
+    );
 
     // calculate percentiles
     if (includeLatencyStats) {
       tempTotals.requestTimes.sort((a, b) => a - b);
-      tempTotals.latencyMean = this._calculateMean(tempTotals.requestTimes) || 0;
+      tempTotals.latencyMean =
+        this._calculateMean(tempTotals.requestTimes) || 0;
       this._opts.percentiles.forEach(p => {
         tempTotals.percentiles[p] =
           this._calculatePercentile(p, tempTotals.requestTimes) || 0;
@@ -146,26 +173,24 @@ class Stats extends EventEmitter {
 
     // remove large totals Arrays
     delete tempTotals.requestTimes;
-    this._totals = tempTotals;
-
-    this._totals = Object.assign(this._totals, this._cummulative);
+    this._totals = Object.assign(tempTotals, this._cumulative);
 
     return this._totals;
   }
 
   _resetDerivs() {
-    this._cummulative.countTotalDeriv = 0;
-    this._cummulative.countSuccessDeriv = 0;
-    this._cummulative.countFailureDeriv = 0;
-    this._cummulative.countTimeoutDeriv = 0;
-    this._cummulative.countShortCircuitedDeriv = 0;
+    this._cumulative.countTotalDeriv = 0;
+    this._cumulative.countSuccessDeriv = 0;
+    this._cumulative.countFailureDeriv = 0;
+    this._cumulative.countTimeoutDeriv = 0;
+    this._cumulative.countShortCircuitedDeriv = 0;
   }
 
   /*
   Calculate percentile.
   This function assumes the list you are giving it is already ordered.
   */
-  _calculatePercentile(percentile, array) {
+  _calculatePercentile(percentile: number, array: number[]) {
     if (percentile === 0) {
       return array[0];
     }
@@ -176,7 +201,7 @@ class Stats extends EventEmitter {
   /*
   Calculate mean.
   */
-  _calculateMean(array) {
+  _calculateMean(array: number[]) {
     const sum = array.reduce((a, b) => a + b, 0);
     return Math.round(sum / array.length);
   }
@@ -186,7 +211,7 @@ class Stats extends EventEmitter {
     this.emit('update', this._generateStats(this._buckets));
   }
 
-  _shiftAndPush(arr, item) {
+  _shiftAndPush<T>(arr: T[], item: T) {
     arr.push(item);
     arr.shift();
     return arr;
@@ -199,13 +224,13 @@ class Stats extends EventEmitter {
   }
 
   /* Register a failure */
-  failure(runTime) {
+  failure(runTime: number) {
     this._activeBucket.failure(runTime);
     this._update();
   }
 
   /* Register a success */
-  success(runTime) {
+  success(runTime: number) {
     this._activeBucket.success(runTime);
     this._update();
   }
@@ -217,10 +242,8 @@ class Stats extends EventEmitter {
   }
 
   /* Register a timeout */
-  timeout(runTime) {
+  timeout(runTime: number) {
     this._activeBucket.timeout(runTime);
     this._update();
   }
 }
-
-module.exports = Stats;

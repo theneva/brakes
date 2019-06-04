@@ -3,12 +3,12 @@
 const utils = require('../lib/utils');
 const expect = require('chai').expect;
 
-
 describe('utils', () => {
   describe('hasCallback', () => {
     it('should return true', () => {
       // standard
-      let passed = utils.hasCallback(function test(err, cb) { // eslint-disable-line
+      let passed = utils.hasCallback((err, cb) => {
+        // eslint-disable-line
         cb();
       });
       expect(passed).to.equal(true);
@@ -20,8 +20,7 @@ describe('utils', () => {
       expect(passed).to.equal(true);
 
       // anonymous, single arg fat arrow
-      passed = utils.hasCallback(callback =>
-        callback()
+      passed = utils.hasCallback(callback => callback()
         // eslint-disable-next-line function-paren-newline
       );
       expect(passed).to.equal(true);
@@ -39,7 +38,9 @@ describe('utils', () => {
 
     it('should return false', () => {
       // standard
-      let passed = utils.hasCallback(function bleh(test) { /* foo */ }); // eslint-disable-line
+      let passed = utils.hasCallback(test => {
+        /* foo */
+      }); // eslint-disable-line
       expect(passed).to.equal(false);
 
       // anonymous
@@ -47,9 +48,8 @@ describe('utils', () => {
       expect(passed).to.equal(false);
 
       // anonymous, single arg fat arrow
-      passed = utils.hasCallback(foo =>
-        `${foo}bar`
-      // eslint-disable-next-line function-paren-newline
+      passed = utils.hasCallback(foo => `${foo}bar`
+        // eslint-disable-next-line function-paren-newline
       );
       expect(passed).to.equal(false);
 
@@ -71,7 +71,7 @@ describe('utils', () => {
     });
   });
   describe('mapToHystrixJson', () => {
-    it('should map to hysterix compliant object', () => {
+    it('should map to hystrix compliant object', () => {
       const statsOutput = {
         name: 'defaultBrake',
         group: 'defaultBrakeGroup',
@@ -107,7 +107,7 @@ describe('utils', () => {
           countTimeout: 0,
           countTimeoutDeriv: 0,
           countTotal: 0,
-          countTotalDeriv: 0,
+          countTotalDeriv: 0
         }
       };
       const stats = statsOutput.stats;
@@ -117,7 +117,9 @@ describe('utils', () => {
         group: 'defaultBrakeGroup',
         currentTime: 1463292683341,
         isCircuitBreakerOpen: statsOutput.open,
-        errorPercentage: (stats.total) ? Math.round((1 - stats.successful / stats.total) * 100) : 0,
+        errorPercentage: stats.total
+          ? Math.round((1 - stats.successful / stats.total) * 100)
+          : 0,
         errorCount: stats.failed,
         requestCount: stats.total,
         rollingCountBadRequests: 0, // not reported
@@ -159,8 +161,10 @@ describe('utils', () => {
           100: stats.percentiles['1']
         },
         propertyValue_circuitBreakerRequestVolumeThreshold: 666,
-        propertyValue_circuitBreakerSleepWindowInMilliseconds: statsOutput.circuitDuration,
-        propertyValue_circuitBreakerErrorThresholdPercentage: statsOutput.threshold,
+        propertyValue_circuitBreakerSleepWindowInMilliseconds:
+          statsOutput.circuitDuration,
+        propertyValue_circuitBreakerErrorThresholdPercentage:
+          statsOutput.threshold,
         propertyValue_circuitBreakerForceOpen: false, // not reported
         propertyValue_circuitBreakerForceClosed: false, // not reported
         propertyValue_circuitBreakerEnabled: true, // not reported
@@ -185,7 +189,7 @@ describe('utils', () => {
         countSuccessDeriv: 0,
         countFailureDeriv: 0,
         countTimeoutDeriv: 0,
-        countShortCircuitedDeriv: 0,
+        countShortCircuitedDeriv: 0
       });
     });
   });
@@ -198,7 +202,9 @@ describe('utils', () => {
     });
 
     it('should return input promise', () => {
-      function cb() { return Promise.resolve(); }
+      function cb() {
+        return Promise.resolve();
+      }
 
       expect(utils.promisifyIfFunction(cb, true)).to.be.equal(cb);
     });

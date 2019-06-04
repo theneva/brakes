@@ -48,19 +48,21 @@ describe('globalStats', () => {
     const data = {
       foo: 'bar'
     };
-    const stub = sinon.stub(globalStats._rawStream, 'push').callsFake(() => true);
+    const stub = sinon
+      .stub(globalStats._rawStream, 'push')
+      .callsFake(() => true);
     globalStats._globalListener(data);
     expect(stub.calledOnce).to.equal(true);
     expect(stub.firstCall.args[0]).to.equal(JSON.stringify(data));
     globalStats._rawStream.push.restore();
   });
 
-  it('_transformToHysterix() should transform to hysterix', done => {
+  it('_transformToHystrix() should transform to hystrix', done => {
     const mock = {
       foo: 'bar'
     };
     const stub = sinon.stub(utils, 'mapToHystrixJson').callsFake(data => data);
-    globalStats._transformToHysterix(JSON.stringify(mock), null, (err, data) => {
+    globalStats._transformToHystrix(JSON.stringify(mock), null, (err, data) => {
       expect(stub.calledOnce).to.equal(true);
       expect(data).to.equal(`data: ${JSON.stringify(mock)}\n\n`);
       utils.mapToHystrixJson.restore();
@@ -72,7 +74,7 @@ describe('globalStats', () => {
     expect(globalStats.getRawStream()).to.equal(globalStats._rawStream);
   });
 
-  it('getHystrixStream() should return hysterixStream stream', () => {
+  it('getHystrixStream() should return hystrixStream stream', () => {
     expect(globalStats.getHystrixStream()).to.equal(globalStats._hystrixStream);
   });
 });
