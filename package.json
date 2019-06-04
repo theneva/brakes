@@ -37,6 +37,7 @@
     "bluebird": "^3.4.6"
   },
   "devDependencies": {
+    "@types/bluebird": "^3.5.27",
     "chai": "^4.0.1",
     "chai-things": "^0.2.0",
     "coveralls": "^3.0.3",
@@ -45,6 +46,7 @@
     "eslint-plugin-import": "^2.0.1",
     "mocha": "^3.5.2",
     "nyc": "^11.2.1",
-    "sinon": "^7.2.7"
+    "sinon": "^7.2.7",
+    "typescript": "^3.5.1"
   }
 }
